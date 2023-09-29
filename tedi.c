@@ -3,6 +3,7 @@
 #include <termios.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <string.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
@@ -44,7 +45,11 @@ char editorReadKey(){
 void editorDrawRows(){
   for (int i = 0; i < E.screen_rows; ++i)
   {
-    write(STDOUT_FILENO,"~\r\n",3);
+    write(STDOUT_FILENO,"~",1);
+    if (i < E.screen_rows -1)
+    {
+      write(STDOUT_FILENO,"\r\n",2);
+    }
   }
 }
 
@@ -97,20 +102,50 @@ void editorRefreshScreen(){
 
 }
 
+int getCursorPosition(int *rows,int *cols){
+
+  if(write(STDOUT_FILENO,"\x1b[6n",4) != 4) return -1;
+
+  char buf[32];
+  unsigned int i = 0;
+  while(i<sizeof(buf)-1){
+
+    if(read(STDIN_FILENO,&buf[i],1) != 1) break;
+    if(buf[i] == 'R') break;
+    i++;
+  }
+  buf[i] = '\0';
+
+  if(buf[0] != '\x1b' || buf[1] != '[') return -1;
+  if(sscanf(&buf[2],"%d;%d",rows,cols) !=2) return -1;
+  printf("\r\n&buf[1]:  '%s'\r\n",&buf[1]);
+  
+  editorReadKey();
+  return 0;
+}
 int getWindowSize( int *rows , int * cols){
   struct winsize ws;
 
   if (ioctl(STDOUT_FILENO,TIOCGWINSZ,&ws) == -1 || ws.ws_col == 0)
   {
-    return -1;
+    if(write(STDOUT_FILENO,"\x1b[999C\x1b[999B",12) != 12) return -1;
+    getCursorPosition(rows,cols);
   }
   else{
-    *cols = ws.ws_col;
+    *cols = ws.ws_col;  
     *rows = ws.ws_row;
     return 0;
   }
+  return -1;
 }
 
+/**** Append Buffer ****/
+struct abuf{
+  char *b;
+  int len;  
+};
+
+#define ABUF_INIT {NULL,0}
 
 /*** init ***/
 void initEditor(){
